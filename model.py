@@ -1,112 +1,86 @@
 import torch
 from torch import nn
 
-
 class SmilesVAE(nn.Module):
     """
-    Variational Autoencoder (VAE) for SMILES strings.
-    Uses a GRU encoder and decoder with a continuous latent space.
+    Variational Autoencoder (VAE) for SMILES sequences.
+    Uses GRU encoder/decoder with latent bottleneck.
     """
-    def __init__(self, vocab_size, emb_dim=128, h_dim=256, z_dim=32):
+    def __init__(self, vocab_size, emb_dim=128, h_dim=256, z_dim=16, pad_idx=0):
         super().__init__()
+        self.pad_idx = pad_idx
 
         # --------------------
-        # Encoder components
+        # Encoder
         # --------------------
-
-        self.embedding = nn.Embedding(
-            vocab_size,              # Size of vocabulary (number of unique tokens)
-            emb_dim,                 # Dimension of embedding vectors
-            padding_idx=0            # PAD_TOKEN index (must be 0 — matches your vocab)
-        )
-
-        self.encoder_rnn = nn.GRU(
-            emb_dim,                 # Input size = embedding dimension
-            h_dim,                   # Hidden state size
-            batch_first=True         # Input shape: (batch, seq_len, emb_dim)
-        )
-
-        self.fc_mu = nn.Linear(
-            h_dim,                   # Encoder hidden state size
-            z_dim                    # Latent mean dimension
-        )
-
-        self.fc_logvar = nn.Linear(
-            h_dim,                   # Encoder hidden state size
-            z_dim                    # Latent log-variance dimension
-        )
+        self.embedding = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_idx)
+        self.encoder_rnn = nn.GRU(emb_dim, h_dim, batch_first=True)
+        self.fc_mu = nn.Linear(h_dim, z_dim)      # Latent mean
+        self.fc_logvar = nn.Linear(h_dim, z_dim)  # Latent log-variance
 
         # --------------------
-        # Decoder components
+        # Decoder
         # --------------------
-
-        self.fc_z = nn.Linear(
-            z_dim,                   # Latent vector size
-            h_dim                    # Decoder initial hidden state size
-        )
-
-        self.decoder_rnn = nn.GRU(
-            emb_dim,                 # Input size = embedding dimension
-            h_dim,                   # Hidden state size
-            batch_first=True         # Input shape: (batch, seq_len, emb_dim)
-        )
-
-        self.fc_out = nn.Linear(
-            h_dim,                   # Decoder hidden state size
-            vocab_size               # Output logits over vocabulary
-        )
+        self.fc_z = nn.Linear(z_dim, h_dim)       # Map latent z -> initial hidden
+        self.decoder_rnn = nn.GRU(emb_dim, h_dim, batch_first=True)
+        self.fc_out = nn.Linear(h_dim, vocab_size)  # Output logits over vocab
 
     def encode(self, x):
-        """
-        Encode input SMILES into latent mean and log-variance.
-
-        x: Tensor of shape (batch_size, seq_len)
-        """
-        emb = self.embedding(x)              # (batch, seq_len, emb_dim)
-
-        _, h = self.encoder_rnn(emb)         # h: (1, batch, h_dim)
-
-        h = h.squeeze(0)                     # (batch, h_dim)
-
-        mu = self.fc_mu(h)                   # Latent mean (batch, z_dim)
-        logvar = self.fc_logvar(h)            # Latent log-variance (batch, z_dim)
-
+        """Encode input tensor x into latent mean and log-variance."""
+        emb = self.embedding(x)                   # (batch, seq_len, emb_dim)
+        _, h = self.encoder_rnn(emb)              # h: (1, batch, h_dim)
+        h = h.squeeze(0)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
-        """
-        Sample latent vector z using the reparameterization trick.
-        """
-        std = torch.exp(0.5 * logvar)         # Standard deviation
-        eps = torch.randn_like(std)           # Random noise ~ N(0, I)
-        return mu + eps * std                 # Sampled latent vector z
+        """Reparameterization trick: sample latent vector z from N(mu, sigma^2)."""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
 
     def decode(self, z, x):
-        """
-        Decode latent vector z into output token logits.
-
-        z: Tensor of shape (batch_size, z_dim)
-        x: Input tokens for teacher forcing (batch_size, seq_len)
-        """
-        h0 = self.fc_z(z).unsqueeze(0)        # Initial hidden state (1, batch, h_dim)
-
-        emb = self.embedding(x)               # (batch, seq_len, emb_dim)
-
-        out, _ = self.decoder_rnn(emb, h0)    # (batch, seq_len, h_dim)
-
-        return self.fc_out(out)               # (batch, seq_len, vocab_size)
+        """Decode latent z using teacher forcing with input x."""
+        h0 = self.fc_z(z).unsqueeze(0)            # Initial hidden state for decoder
+        emb = self.embedding(x)
+        out, _ = self.decoder_rnn(emb, h0)
+        return self.fc_out(out)
 
     def forward(self, x):
         """
-        Full VAE forward pass.
-
+        Full forward pass: encode -> reparameterize -> decode.
         Returns:
-        - logits: unnormalized token scores
-        - mu: latent mean
-        - logvar: latent log-variance
+            logits: token logits
+            mu: latent mean
+            logvar: latent logvar
         """
-        mu, logvar = self.encode(x)           # Encode input
-        z = self.reparameterize(mu, logvar)   # Sample latent vector
-        logits = self.decode(z, x)            # Decode with teacher forcing
-
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        logits = self.decode(z, x)
         return logits, mu, logvar
+
+    def generate(self, z, stoi, itos, max_len=100):
+        """
+        Generate SMILES string from latent vector z without teacher forcing.
+        Autoregressively predicts next token until <eos> or max_len.
+        """
+        self.eval()
+        device = z.device
+        with torch.no_grad():
+            x = torch.tensor([[stoi["<sos>"]]], device=device)  # Start token
+            output = []
+            h = self.fc_z(z).unsqueeze(0)
+
+            for _ in range(max_len):
+                emb = self.embedding(x)
+                out, h = self.decoder_rnn(emb, h)
+                logits = self.fc_out(out[:, -1, :])
+                token = logits.argmax(dim=-1)
+                if token.item() == stoi["<eos>"]:
+                    break
+                output.append(token.item())
+                x = token.unsqueeze(0)
+
+            # Convert token IDs to string, removing special tokens
+            return "".join([itos[i] for i in output if i not in (stoi["<sos>"], stoi["<pad>"])])

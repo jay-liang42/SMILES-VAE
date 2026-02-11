@@ -1,91 +1,107 @@
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
+import wandb
 
-# Import the VAE model
 from model import SmilesVAE
+from data_utils import SmilesDataset, build_vocab, PAD_TOKEN
+from config import Config
+from logger import get_logger
 
-# Import dataset utilities from your data file
-from data_utils import SmilesDataset, build_vocab
+# -----------------------
+# Setup
+# -----------------------
+cfg = Config()
+logger = get_logger()
+DEVICE = cfg.device if torch.cuda.is_available() else "cpu"
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu" # Uses GPU if available, otherwise falls back to CPU
+# Initialize W&B experiment logging
+wandb.init(project=cfg.project, config=vars(cfg))
+logger.info("Starting training")
+logger.info(cfg)
 
-BATCH_SIZE = 64          # Number of molecules per training batch
-EPOCHS = 20              # Number of full passes through the dataset
-LR = 3e-4                # Learning rate for the Adam optimizer
-MAX_LEN = 100            # Maximum SMILES sequence length
-Z_DIM = 32               # Dimensionality of latent space
-BETA = 1.0               # Weight on KL divergence (beta-VAE control)
+# -----------------------
+# Prepare Data
+# -----------------------
+with open("moses_smiles.txt") as f:
+    smiles = [line.strip() for line in f if line.strip()]
 
-
-with open("moses_smiles.txt") as f:   # Load the SMILES file
-    smiles = [line.strip() for line in f if line.strip()] # Read and clean SMILES strings
-
-# Build vocabulary mappings from the dataset
 stoi, itos = build_vocab(smiles)
+dataset = SmilesDataset("moses_smiles.txt", stoi, cfg.max_len)
+loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
 
-# Create PyTorch Dataset
-dataset = SmilesDataset(
-    "moses_smiles.txt",   # Path to SMILES file
-    stoi,                 # Vocabulary mapping
-    MAX_LEN               # Fixed sequence length
-)
-
-# Wrap dataset in a DataLoader for batching and shuffling
-loader = DataLoader(
-    dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True
-)
-
-# Model, optimizer, loss
+# -----------------------
+# Initialize Model
+# -----------------------
 model = SmilesVAE(
-    vocab_size=len(stoi), # Number of tokens in vocabulary
-    z_dim=Z_DIM           # Latent dimension
+    vocab_size=len(stoi),
+    emb_dim=cfg.emb_dim,
+    h_dim=cfg.h_dim,
+    z_dim=cfg.z_dim,
+    pad_idx=stoi[PAD_TOKEN]
 ).to(DEVICE)
 
-optimizer = optim.Adam(
-    model.parameters(),   # Parameters to optimize
-    lr=LR                 # Learning rate
-)
+optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+criterion = nn.CrossEntropyLoss(ignore_index=stoi[PAD_TOKEN], reduction="sum")
 
-criterion = nn.CrossEntropyLoss(
-    ignore_index=stoi["<pad>"],  # Ignore padding tokens in loss
-    reduction="sum"              # Sum loss over tokens (standard for VAEs)
-)
-
-
-# Training loop
-for epoch in range(EPOCHS):
-    model.train()                  # Set model to training mode
-    total_loss = 0                 # Accumulate total loss for epoch
+# -----------------------
+# Training Loop
+# -----------------------
+for epoch in range(cfg.epochs):
+    model.train()
+    total_loss = total_kl = total_recon = 0
 
     for x in loader:
-        x = x.to(DEVICE)           # Move batch to GPU/CPU
+        x = x.to(DEVICE)
 
-        logits, mu, logvar = model(x)
-        # logits: (batch, seq_len, vocab_size)
-        # mu/logvar: (batch, z_dim)
-        
-        # Reconstruction loss
-        recon_loss = criterion(
-            logits.view(-1, logits.size(-1)),  # (batch*seq_len, vocab_size)
-            x.view(-1)                         # (batch*seq_len)
-        )
+        # Teacher forcing: decoder input excludes last token, target excludes first token
+        decoder_input = x[:, :-1]
+        target = x[:, 1:]
 
-        # KL divergence loss
-        kl = -0.5 * torch.sum(
-            1 + logvar - mu.pow(2) - logvar.exp()
-        )
+        # Forward pass
+        logits, mu, logvar = model(decoder_input)
+
+        # Reconstruction loss (cross-entropy)
+        recon_loss = criterion(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+
+        # KL divergence (latent regularization)
+        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         # Total VAE loss
-        loss = recon_loss + BETA * kl
+        loss = recon_loss + cfg.beta * kl
 
-        optimizer.zero_grad()       # Clear previous gradients
-        loss.backward()             # Backpropagate
-        optimizer.step()            # Update parameters
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-        total_loss += loss.item()   # Accumulate batch loss
+        total_loss += loss.item()
+        total_kl += kl.item()
+        total_recon += recon_loss.item()
 
-    # Normalize loss by number of molecules
-    print(f"Epoch {epoch+1}, Loss: {total_loss / len(dataset):.4f}")
+    # Normalize by dataset size for reporting
+    epoch_loss = total_loss / len(dataset)
+    logger.info(f"Epoch {epoch+1} Loss: {epoch_loss:.4f}")
+
+    # Log metrics to W&B
+    wandb.log({
+        "epoch": epoch,
+        "loss": epoch_loss,
+        "kl": total_kl / len(dataset),
+        "recon": total_recon / len(dataset),
+    })
+
+# -----------------------
+# Sampling from Latent Space
+# -----------------------
+model.eval()
+samples = []
+with torch.no_grad():
+    for _ in range(5):
+        z = torch.randn(1, cfg.z_dim).to(DEVICE)
+        s = model.generate(z, stoi, itos)
+        samples.append(s)
+        logger.info(f"Sample: {s}")
+
+wandb.log({"samples": samples})
+wandb.finish()
