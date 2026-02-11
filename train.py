@@ -1,6 +1,7 @@
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 import wandb
 
 from model import SmilesVAE
@@ -51,7 +52,7 @@ for epoch in range(cfg.epochs):
     model.train()
     total_loss = total_kl = total_recon = 0
 
-    for x in loader:
+    for x in tqdm(loader):
         x = x.to(DEVICE)
 
         # Teacher forcing: decoder input excludes last token, target excludes first token
