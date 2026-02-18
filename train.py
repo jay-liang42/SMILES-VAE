@@ -32,6 +32,7 @@ wandb.init(
     name=run_name,
     config=vars(cfg),
 )
+
 logger.info("Starting training")
 logger.info(cfg)
 
