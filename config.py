@@ -11,7 +11,7 @@ class Config:
     # Number of samples processed before each optimizer step.
     # Larger = faster training but more VRAM usage.
 
-    epochs: int = 5
+    epochs: int = 200
     # Full passes over the dataset.
     # Increase this to improve convergence.
 

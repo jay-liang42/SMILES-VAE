@@ -5,12 +5,17 @@ from tqdm import tqdm
 from metrics import is_valid_smiles_strict, smiles_similarity
 import random
 import wandb
+import json
+
+
 
 
 from model import SmilesVAE
 from data_utils import SmilesDataset, build_vocab, PAD_TOKEN
 from config import Config
 from logger import get_logger
+
+
 
 
 # -----------------------
@@ -21,11 +26,15 @@ logger = get_logger()
 DEVICE = cfg.device if torch.cuda.is_available() else "cpu"
 
 
+
+
 # Initialize W&B experiment logging
 run_name = (
     f"z{cfg.z_dim}_h{cfg.h_dim}_emb{cfg.emb_dim}"
     f"_beta{cfg.beta}_lr{cfg.lr}"
 )
+
+wandb.login(key=json.load(open('/root/gurusmart/wandb_key.json', 'r'))['key'])
 
 wandb.init(
     project=cfg.project,
@@ -33,8 +42,11 @@ wandb.init(
     config=vars(cfg),
 )
 
+
 logger.info("Starting training")
 logger.info(cfg)
+
+
 
 
 # -----------------------
@@ -45,9 +57,13 @@ with open("moses_smiles.txt") as f:
     reference_pool = random.sample(smiles, 1000)
 
 
+
+
 stoi, itos = build_vocab(smiles)
 dataset = SmilesDataset("moses_smiles.txt", stoi, cfg.max_len)
 loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
+
+
 
 
 # -----------------------
@@ -62,8 +78,41 @@ model = SmilesVAE(
 ).to(DEVICE)
 
 
+
+
 optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
 criterion = nn.CrossEntropyLoss(ignore_index=stoi[PAD_TOKEN], reduction="sum")
+
+
+
+
+# -----------------------
+# Early Stopping
+# -----------------------
+class EarlyStopping:
+    def __init__(self, patience=20, min_delta=0.001):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best = float("inf")
+        self.counter = 0
+
+
+    def step(self, metric, model):
+        if metric < self.best - self.min_delta:
+            self.best = metric
+            self.counter = 0
+            torch.save(model.state_dict(), "best_model.pt")
+            return False
+        else:
+            self.counter += 1
+            return self.counter >= self.patience
+
+
+
+
+early_stopper = EarlyStopping(patience=20)
+
+
 
 
 # -----------------------
@@ -74,32 +123,33 @@ for epoch in range(cfg.epochs):
     total_loss = total_kl = total_recon = 0
 
 
+
+
     for x in tqdm(loader):
         x = x.to(DEVICE)
 
 
-        # Teacher forcing: decoder input excludes last token, target excludes first token
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
 
-        # Forward pass
         logits, mu, logvar = model(decoder_input)
 
 
-        # Reconstruction loss (cross-entropy)
-        recon_loss = criterion(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+        recon_loss = criterion(
+            logits.reshape(-1, logits.size(-1)),
+            target.reshape(-1)
+        )
 
 
-        # KL divergence (latent regularization)
-        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        kl = -0.5 * torch.sum(
+            1 + logvar - mu.pow(2) - logvar.exp()
+        )
 
 
-        # Total VAE loss
         loss = recon_loss + cfg.beta * kl
 
 
-        # Backpropagation
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -110,18 +160,22 @@ for epoch in range(cfg.epochs):
         total_recon += recon_loss.item()
 
 
-    # Normalize by dataset size for reporting
+
+
     epoch_loss = total_loss / len(dataset)
+
+
     logger.info(f"Epoch {epoch+1} Loss: {epoch_loss:.4f}")
 
 
-    # Log metrics to W&B
     wandb.log({
         "epoch": epoch,
         "loss": epoch_loss,
         "kl": total_kl / len(dataset),
         "recon": total_recon / len(dataset),
     })
+
+
 
 
     # -----------------------
@@ -162,6 +216,14 @@ for epoch in range(cfg.epochs):
         "validity_rate": validity_rate,
         "similarity": avg_similarity,
     })
+
+
+    # -----------------------
+    # Early Stop Check
+    # -----------------------
+    if early_stopper.step(epoch_loss, model):
+        logger.info(f"Early stopping triggered at epoch {epoch+1}")
+        break
 
 
 

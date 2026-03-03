@@ -1,0 +1,53 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+*.env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# WandB logs and directories
+wandb/
+
+# Model Checkpoints
+*.h5
+*.ckpt
+*.pth
+*.pt
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Python environment files
+.env
+*.env
+
+# Test coverage
+.coverage
+.coverage.*
+nosetests.xml
+pytest.xml
+*.coveragerc
+
+# Dependencies
+Pipfile.lock
+*.egg-info/
+
+# Temporary files
+*.swp
+*.swo
+*.bak
+*.tmp
