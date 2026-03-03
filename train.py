@@ -90,25 +90,34 @@ criterion = nn.CrossEntropyLoss(ignore_index=stoi[PAD_TOKEN], reduction="sum")
 # Early Stopping
 # -----------------------
 class EarlyStopping:
-    def __init__(self, patience=20, min_delta=0.001):
+    def __init__(self, patience=15, min_delta=0.005):
         self.patience = patience
         self.min_delta = min_delta
-        self.best = float("inf")
+
+        self.best_val_loss = float("inf")
+        self.best_similarity = 0.0
+
         self.counter = 0
 
+    def step(self, val_loss, similarity, model):
+        loss_improved = self.best_val_loss - val_loss > self.min_delta
+        sim_improved = similarity > self.best_similarity + 1e-4
 
-    def step(self, metric, model):
-        if metric < self.best - self.min_delta:
-            self.best = metric
+        if loss_improved or sim_improved:
+            if loss_improved:
+                self.best_val_loss = val_loss
+            if sim_improved:
+                self.best_similarity = similarity
+
             self.counter = 0
             torch.save(model.state_dict(), "best_model.pt")
+            print(f"New best | Val Loss: {val_loss:.4f} | Sim: {similarity:.4f}")
             return False
         else:
             self.counter += 1
+            print(f"No improvement ({self.counter}/{self.patience})")
+
             return self.counter >= self.patience
-
-
-
 
 early_stopper = EarlyStopping(patience=20)
 
