@@ -135,6 +135,7 @@ for epoch in range(cfg.epochs):
         decoder_input = x[:, :-1]
         target = x[:, 1:]
         logits, mu, logvar = model(decoder_input)
+        logvar = torch.clamp(logvar, -10, 10)
         recon_loss = criterion(
             logits.reshape(-1, logits.size(-1)),
             target.reshape(-1)
