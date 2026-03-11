@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-import lightning as L
+import pytorch_lightning as pl 
 import random
 
 from model import SmilesVAE
@@ -8,7 +8,7 @@ from metrics import is_valid_smiles_strict, smiles_similarity
 from data_utils import PAD_TOKEN
 
 
-class SMILESVAE(L.LightningModule):
+class SMILESVAE(pl.LightningModule):  
 
     def __init__(self, cfg):
         super().__init__()
