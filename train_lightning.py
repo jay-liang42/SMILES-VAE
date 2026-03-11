@@ -52,14 +52,6 @@ def main():
     )
 
     # -----------------------
-    # W&B Logger
-    # -----------------------
-    wandb_logger = WandbLogger(
-        project=cfg.project,
-        name=f"z{cfg.z_dim}_h{cfg.h_dim}_emb{cfg.emb_dim}_beta{cfg.beta}_lr{cfg.lr}"
-    )
-
-    # -----------------------
     # Early Stopping
     # -----------------------
     early_stop = EarlyStopping(
@@ -79,7 +71,6 @@ def main():
         benchmark=True,
         gradient_clip_val=1.0,
         log_every_n_steps=50,
-        logger=wandb_logger,
         callbacks=[early_stop],
         deterministic=False
     )
