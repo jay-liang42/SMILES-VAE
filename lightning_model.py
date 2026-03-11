@@ -39,7 +39,6 @@ class SMILESVAE(L.LightningModule):
         )
 
     def forward(self, x):
-
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
@@ -64,9 +63,31 @@ class SMILESVAE(L.LightningModule):
 
         loss = recon_loss + self.cfg.beta * kl
 
-        self.log("train_loss", loss)
-        self.log("recon_loss", recon_loss)
-        self.log("kl_loss", kl)
+        # Proper Lightning logging
+        self.log(
+            "train_loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True
+        )
+
+        self.log(
+            "recon_loss",
+            recon_loss,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True
+        )
+
+        self.log(
+            "kl_loss",
+            kl,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True
+        )
 
         return loss
 
@@ -92,7 +113,14 @@ class SMILESVAE(L.LightningModule):
 
         loss = recon_loss + self.cfg.beta * kl
 
-        self.log("val_loss", loss)
+        self.log(
+            "val_loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True
+        )
 
     def on_validation_epoch_end(self):
 
@@ -122,8 +150,19 @@ class SMILESVAE(L.LightningModule):
         validity_rate = valid_count / 50
         avg_similarity = sum(similarities) / len(similarities)
 
-        self.log("validity_rate", validity_rate)
-        self.log("similarity", avg_similarity)
+        self.log(
+            "validity_rate",
+            validity_rate,
+            prog_bar=True,
+            sync_dist=True
+        )
+
+        self.log(
+            "similarity",
+            avg_similarity,
+            prog_bar=True,
+            sync_dist=True
+        )
 
     def configure_optimizers(self):
 
