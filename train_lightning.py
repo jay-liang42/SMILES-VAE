@@ -8,12 +8,11 @@ from lightning_model import SMILESVAE
 from data_module import SMILESDataModule
 from config import Config
 
+
 def main():
     cfg = Config()
 
-    # -----------------------
     # CLI Overrides
-    # -----------------------
     parser = argparse.ArgumentParser()
     parser.add_argument("--z_dim", type=int)
     parser.add_argument("--h_dim", type=int)
@@ -24,43 +23,28 @@ def main():
     parser.add_argument("--run_name", type=str, default="run1")
     args = parser.parse_args()
 
-    # Apply CLI overrides
     if args.z_dim: cfg.z_dim = args.z_dim
     if args.h_dim: cfg.h_dim = args.h_dim
     if args.emb_dim: cfg.emb_dim = args.emb_dim
     if args.beta: cfg.beta = args.beta
     if args.lr: cfg.lr = args.lr
 
-    # -----------------------
+    # WandB Logger
+    wandb_run = wandb.init(project=args.project, name=args.run_name)
+    wandb_logger = WandbLogger(experiment=wandb_run)
+
+    # Model
+    model = SMILESVAE(cfg)
+
     # Data
-    # -----------------------
     data = SMILESDataModule(
         smiles_file="moses_smiles.txt",
         batch_size=cfg.batch_size,
         max_len=cfg.max_len
     )
-    data.setup()  # ensure input_dim is calculated
 
-    # -----------------------
-    # Model
-    # -----------------------
-    cfg.input_dim = data.input_dim  # set flattened one-hot input_dim
-    model = SMILESVAE(cfg)
-
-    # -----------------------
-    # WandB Logger
-    # -----------------------
-    wandb_run = wandb.init(project=args.project, name=args.run_name)
-    wandb_logger = WandbLogger(experiment=wandb_run)
-
-    # -----------------------
     # Callbacks
-    # -----------------------
-    early_stop = EarlyStopping(
-        monitor="val_loss",
-        patience=20,
-        mode="min"
-    )
+    early_stop = EarlyStopping(monitor="val_loss", patience=20, mode="min")
     lr_monitor = LearningRateMonitor(logging_interval="step")
     checkpoint = ModelCheckpoint(
         monitor="val_loss",
@@ -70,9 +54,7 @@ def main():
         save_last=True
     )
 
-    # -----------------------
     # Trainer
-    # -----------------------
     trainer = pl.Trainer(
         max_epochs=cfg.epochs,
         accelerator="auto",
@@ -86,15 +68,11 @@ def main():
         deterministic=False
     )
 
-    # -----------------------
     # Training
-    # -----------------------
     trainer.fit(model, datamodule=data)
 
-    # -----------------------
-    # Finish WandB run
-    # -----------------------
     wandb.finish()
+
 
 if __name__ == "__main__":
     main()
