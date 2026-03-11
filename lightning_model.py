@@ -1,15 +1,14 @@
 import torch
 import torch.nn.functional as F
-import lightning as L
 import random
+import pytorch_lightning as pl  
 
 from model import SmilesVAE
 from metrics import is_valid_smiles_strict, smiles_similarity
 from data_utils import PAD_TOKEN
 
 
-class SMILESVAE(L.LightningModule):
-
+class SMILESVAE(pl.LightningModule): 
     def __init__(self, cfg):
         super().__init__()
 
@@ -20,7 +19,6 @@ class SMILESVAE(L.LightningModule):
         self.reference_pool = None
 
     def setup(self, stage=None):
-
         dm = self.trainer.datamodule
 
         self.stoi = dm.stoi
@@ -42,9 +40,7 @@ class SMILESVAE(L.LightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
-
         x = batch
-
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
@@ -57,44 +53,18 @@ class SMILESVAE(L.LightningModule):
             reduction="sum"
         )
 
-        kl = -0.5 * torch.sum(
-            1 + logvar - mu.pow(2) - logvar.exp()
-        )
+        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         loss = recon_loss + self.cfg.beta * kl
 
-        # Proper Lightning logging
-        self.log(
-            "train_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True
-        )
-
-        self.log(
-            "recon_loss",
-            recon_loss,
-            on_step=False,
-            on_epoch=True,
-            sync_dist=True
-        )
-
-        self.log(
-            "kl_loss",
-            kl,
-            on_step=False,
-            on_epoch=True,
-            sync_dist=True
-        )
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log("recon_loss", recon_loss, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("kl_loss", kl, on_step=False, on_epoch=True, sync_dist=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-
         x = batch
-
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
@@ -107,66 +77,30 @@ class SMILESVAE(L.LightningModule):
             reduction="sum"
         )
 
-        kl = -0.5 * torch.sum(
-            1 + logvar - mu.pow(2) - logvar.exp()
-        )
+        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         loss = recon_loss + self.cfg.beta * kl
 
-        self.log(
-            "val_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True
-        )
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
 
     def on_validation_epoch_end(self):
-
         valid_count = 0
         similarities = []
 
         for _ in range(50):
-
             z = torch.randn(1, self.cfg.z_dim).to(self.device)
-
             gen = self.model.generate(z, self.stoi, self.itos)
 
             if is_valid_smiles_strict(gen):
-
                 valid_count += 1
-
                 ref = random.choice(self.reference_pool)
-
                 sim = smiles_similarity(gen, ref)
-
                 similarities.append(sim)
-
             else:
-
                 similarities.append(0.0)
 
-        validity_rate = valid_count / 50
-        avg_similarity = sum(similarities) / len(similarities)
-
-        self.log(
-            "validity_rate",
-            validity_rate,
-            prog_bar=True,
-            sync_dist=True
-        )
-
-        self.log(
-            "similarity",
-            avg_similarity,
-            prog_bar=True,
-            sync_dist=True
-        )
+        self.log("validity_rate", valid_count / 50, prog_bar=True, sync_dist=True)
+        self.log("similarity", sum(similarities) / len(similarities), prog_bar=True, sync_dist=True)
 
     def configure_optimizers(self):
-
-        return torch.optim.Adam(
-            self.parameters(),
-            lr=self.cfg.lr
-        )
+        return torch.optim.Adam(s
