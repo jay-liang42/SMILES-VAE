@@ -1,11 +1,11 @@
 import torch
 from torch.utils.data import DataLoader, random_split
-import lightning as L
+import pytorch_lightning as pl  
 
 from data_utils import SmilesDataset, build_vocab, PAD_TOKEN
 
 
-class SMILESDataModule(L.LightningDataModule):
+class SMILESDataModule(pl.LightningDataModule):
     def __init__(self, smiles_file, batch_size, max_len):
         super().__init__()
         self.smiles_file = smiles_file
