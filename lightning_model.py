@@ -103,4 +103,4 @@ class SMILESVAE(pl.LightningModule):
         self.log("similarity", sum(similarities) / len(similarities), prog_bar=True, sync_dist=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(s
+        return torch.optim.Adam(s)
