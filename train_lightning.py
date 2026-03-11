@@ -46,9 +46,9 @@ def main():
     # Data
     # -----------------------
     data = SMILESDataModule(
-        train_file="moses_smiles.txt",
-        val_file="moses_smiles.txt",
-        batch_size=cfg.batch_size
+        smiles_file="moses_smiles.txt",
+        batch_size=cfg.batch_size,
+        max_len=cfg.max_len
     )
 
     # -----------------------
