@@ -1,8 +1,8 @@
 import argparse
-import lightning as L
-
-from lightning.pytorch.callbacks import EarlyStopping
-from lightning.pytorch.loggers import WandbLogger
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.loggers import WandbLogger
+import wandb
 
 from lightning_model import SMILESVAE
 from data_module import SMILESDataModule
@@ -10,7 +10,6 @@ from config import Config
 
 
 def main():
-
     cfg = Config()
 
     # -----------------------
@@ -23,6 +22,8 @@ def main():
     parser.add_argument("--emb_dim", type=int)
     parser.add_argument("--beta", type=float)
     parser.add_argument("--lr", type=float)
+    parser.add_argument("--project", type=str, default="smiles-vae")
+    parser.add_argument("--run_name", type=str, default="run1")
 
     args = parser.parse_args()
 
@@ -36,6 +37,12 @@ def main():
         cfg.beta = args.beta
     if args.lr:
         cfg.lr = args.lr
+
+    # -----------------------
+    # WandB Logger
+    # -----------------------
+    wandb_run = wandb.init(project=args.project, name=args.run_name)
+    wandb_logger = WandbLogger(experiment=wandb_run)
 
     # -----------------------
     # Model
@@ -52,18 +59,26 @@ def main():
     )
 
     # -----------------------
-    # Early Stopping
+    # Callbacks
     # -----------------------
     early_stop = EarlyStopping(
         monitor="val_loss",
         patience=20,
         mode="min"
     )
+    lr_monitor = LearningRateMonitor(logging_interval="step")
+    checkpoint = ModelCheckpoint(
+        monitor="val_loss",
+        mode="min",
+        save_top_k=1,
+        filename="epoch_{epoch:02d}",
+        save_last=True
+    )
 
     # -----------------------
     # Trainer
     # -----------------------
-    trainer = L.Trainer(
+    trainer = pl.Trainer(
         max_epochs=cfg.epochs,
         accelerator="auto",
         devices=1,
@@ -71,11 +86,20 @@ def main():
         benchmark=True,
         gradient_clip_val=1.0,
         log_every_n_steps=50,
-        callbacks=[early_stop],
+        logger=wandb_logger,
+        callbacks=[early_stop, lr_monitor, checkpoint],
         deterministic=False
     )
 
-    trainer.fit(model, data)
+    # -----------------------
+    # Training
+    # -----------------------
+    trainer.fit(model, datamodule=data)
+
+    # -----------------------
+    # Finish WandB run
+    # -----------------------
+    wandb.finish()
 
 
 if __name__ == "__main__":
