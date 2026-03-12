@@ -15,7 +15,6 @@ class SMILESDataModule(pl.LightningDataModule):
         # will be set after setup
         self.stoi = None
         self.itos = None
-        self.input_dim = None
         self.train_dataset = None
         self.val_dataset = None
 
@@ -26,7 +25,6 @@ class SMILESDataModule(pl.LightningDataModule):
 
         # Build vocabulary
         self.stoi, self.itos = build_vocab(smiles)
-        self.input_dim = len(self.stoi) * self.max_len  # flattened one-hot length
 
         # Create dataset
         dataset = SmilesDataset(
@@ -44,20 +42,18 @@ class SMILESDataModule(pl.LightningDataModule):
 
     def _one_hot_flattened(self, batch):
         """
-        Convert a batch of sequences (LongTensor) to flattened one-hot FloatTensor.
-        Input: list of [seq_len] tensors
-        Output: [batch_size, seq_len * vocab_size]
+        Converts a batch of sequences (LongTensor) to flattened one-hot FloatTensor.
+        Input: [batch, seq_len]
+        Output: [batch, seq_len * vocab_size]
         """
-        # batch: list of sequences, stack into tensor
-        x = torch.stack(batch, dim=0)  # [batch_size, seq_len]
+        # batch is a list of LongTensors from SmilesDataset
+        x = torch.stack(batch)  # [batch, seq_len]
         batch_size, seq_len = x.shape
         vocab_size = len(self.stoi)
 
-        # One-hot encoding: [batch, seq_len, vocab_size]
+        # One-hot encoding
         x_oh = torch.nn.functional.one_hot(x, num_classes=vocab_size).float()
-
-        # Flatten sequence dimension: [batch, seq_len * vocab_size]
-        x_flat = x_oh.view(batch_size, seq_len * vocab_size)
+        x_flat = x_oh.view(batch_size, seq_len * vocab_size)  # flattened
         return x_flat
 
     def train_dataloader(self):
