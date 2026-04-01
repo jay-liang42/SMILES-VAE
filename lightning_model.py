@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-import pytorch_lightning as pl 
+import pytorch_lightning as pl
 import random
 
 from model import SmilesVAE
@@ -8,7 +8,7 @@ from metrics import is_valid_smiles_strict, smiles_similarity
 from data_utils import PAD_TOKEN
 
 
-class SMILESVAE(pl.LightningModule):  
+class SMILESVAE(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
@@ -41,10 +41,13 @@ class SMILESVAE(pl.LightningModule):
     def forward(self, x):
         return self.model(x)
 
-    def training_step(self, batch, batch_idx):
-        x = batch  # single tensor [batch, seq_len * vocab_size]
+    def log_text(self, text):
+        if self.logger and hasattr(self.logger, "experiment"):
+            self.logger.experiment.log({"log": text})
 
-        # reshape for model if necessary
+    def training_step(self, batch, batch_idx):
+        x = batch
+
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
@@ -58,18 +61,25 @@ class SMILESVAE(pl.LightningModule):
         )
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
         loss = recon_loss + self.cfg.beta * kl
 
-        # Logging
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
         self.log("recon_loss", recon_loss, on_epoch=True)
         self.log("kl_loss", kl, on_epoch=True)
 
         return loss
 
+    def on_train_epoch_end(self):
+        loss = self.trainer.callback_metrics.get("train_loss_epoch")
+
+        if loss is not None:
+            self.log_text(
+                f"INFO | Epoch {self.current_epoch} Loss: {loss:.4f}"
+            )
+
     def validation_step(self, batch, batch_idx):
-        x = batch  # single tensor
+        x = batch
+
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
@@ -83,10 +93,10 @@ class SMILESVAE(pl.LightningModule):
         )
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
         loss = recon_loss + self.cfg.beta * kl
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+
         return loss
 
     def on_validation_epoch_end(self):
@@ -104,8 +114,17 @@ class SMILESVAE(pl.LightningModule):
             else:
                 similarities.append(0.0)
 
-        self.log("validity_rate", valid_count / 50, prog_bar=True)
-        self.log("similarity", sum(similarities) / len(similarities), prog_bar=True)
+        validity = valid_count / 50
+        similarity = sum(similarities) / len(similarities)
+
+        self.log("validity_rate", validity, prog_bar=True)
+        self.log("similarity", similarity, prog_bar=True)
+
+        self.log_text(
+            f"INFO | Epoch {self.current_epoch} "
+            f"| Validity: {validity:.3f} "
+            f"| Similarity: {similarity:.3f}"
+        )
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.cfg.lr)
