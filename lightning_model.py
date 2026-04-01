@@ -2,10 +2,15 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 import random
+import logging
 
 from model import SmilesVAE
 from metrics import is_valid_smiles_strict, smiles_similarity
 from data_utils import PAD_TOKEN
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 class SMILESVAE(pl.LightningModule):
@@ -25,7 +30,6 @@ class SMILESVAE(pl.LightningModule):
         self.stoi = dm.stoi
         self.itos = dm.itos
 
-        # sample reference SMILES
         with open(dm.smiles_file) as f:
             smiles = [line.strip() for line in f if line.strip()]
             self.reference_pool = random.sample(smiles, 1000)
@@ -40,10 +44,6 @@ class SMILESVAE(pl.LightningModule):
 
     def forward(self, x):
         return self.model(x)
-
-    def log_text(self, text):
-        if self.logger and hasattr(self.logger, "experiment"):
-            self.logger.experiment.log({"log": text})
 
     def training_step(self, batch, batch_idx):
         x = batch
@@ -73,9 +73,7 @@ class SMILESVAE(pl.LightningModule):
         loss = self.trainer.callback_metrics.get("train_loss_epoch")
 
         if loss is not None:
-            self.log_text(
-                f"INFO | Epoch {self.current_epoch} Loss: {loss:.4f}"
-            )
+            logger.info(f"Epoch {self.current_epoch} Loss: {loss:.4f}")
 
     def validation_step(self, batch, batch_idx):
         x = batch
@@ -120,10 +118,8 @@ class SMILESVAE(pl.LightningModule):
         self.log("validity_rate", validity, prog_bar=True)
         self.log("similarity", similarity, prog_bar=True)
 
-        self.log_text(
-            f"INFO | Epoch {self.current_epoch} "
-            f"| Validity: {validity:.3f} "
-            f"| Similarity: {similarity:.3f}"
+        logger.info(
+            f"Validity: {validity:.3f} | Similarity: {similarity:.3f}"
         )
 
     def configure_optimizers(self):
