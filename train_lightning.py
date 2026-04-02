@@ -3,6 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 import wandb
+import json
 
 from lightning_model import SMILESVAE
 from data_module import SMILESDataModule
@@ -20,7 +21,7 @@ def main():
     parser.add_argument("--beta", type=float)
     parser.add_argument("--lr", type=float)
     parser.add_argument("--project", type=str, default="smiles-vae")
-    parser.add_argument("--run_name", type=str, default="run1")
+    parser.add_argument("--run_name", type=str, default=None)  # 🔥 changed
     args = parser.parse_args()
 
     if args.z_dim: cfg.z_dim = args.z_dim
@@ -29,9 +30,25 @@ def main():
     if args.beta: cfg.beta = args.beta
     if args.lr: cfg.lr = args.lr
 
+    # 🔥 Auto-generate run name if not provided
+    if args.run_name is None:
+        run_name = (
+            f"z{cfg.z_dim}_h{cfg.h_dim}_emb{cfg.emb_dim}"
+            f"_beta{cfg.beta}_lr{cfg.lr}"
+        )
+    else:
+        run_name = args.run_name
+
+    # 🔐 (optional login)
+    wandb.login(key=json.load(open('/root/gurusmart/wandb_key.json'))['key'])
+
     # WandB Logger
-    wandb_run = wandb.init(project=args.project, name=args.run_name)
-    wandb_logger = WandbLogger(experiment=wandb_run)
+    wandb_logger = WandbLogger(
+        project=args.project,
+        name=run_name,      # ✅ auto or manual
+        config=vars(cfg),
+        log_model=True
+    )
 
     # Model
     model = SMILESVAE(cfg)
