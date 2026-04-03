@@ -75,6 +75,27 @@ class SMILESVAE(pl.LightningModule):
         if loss is not None:
             logger.info(f"Epoch {self.current_epoch} Loss: {loss:.4f}")
 
+        valid_count = 0
+        similarities = []
+
+        for _ in range(50):
+            z = torch.randn(1, self.cfg.z_dim).to(self.device)
+            gen = self.model.generate(z, self.stoi, self.itos)
+
+            if is_valid_smiles_strict(gen):
+                valid_count += 1
+                ref = random.choice(self.reference_pool)
+                similarities.append(smiles_similarity(gen, ref))
+            else:
+                similarities.append(0.0)
+
+        train_validity = valid_count / 50
+        train_similarity = sum(similarities) / len(similarities)
+
+        logger.info(
+            f"Train Validity: {train_validity:.3f} | Train Similarity: {train_similarity:.3f}"
+        )
+
     def validation_step(self, batch, batch_idx):
         x = batch
 
