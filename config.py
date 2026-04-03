@@ -23,7 +23,7 @@ class Config:
     # Maximum token length for SMILES sequences.
     # Longer molecules get truncated/padded to this size.
 
-    beta: float = 1.0
+    beta: float = 0.0
     # Weight of KL-divergence term in VAE loss.
     # Higher -> stronger latent compression
     # Lower -> better reconstruction
