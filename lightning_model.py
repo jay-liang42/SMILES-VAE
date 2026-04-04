@@ -68,46 +68,48 @@ class SMILESVAE(pl.LightningModule):
         return self.beta_max * (self.current_epoch / self.kl_anneal_epochs)
 
     def training_step(self, batch, batch_idx):
-        x = batch
-
-        logits, mu, logvar = self(x)
-
+        # Shift input/target for sequence training
+        x_input = batch[:, :-1]
+        x_target = batch[:, 1:]
+    
+        logits, mu, logvar = self(x_input)
+    
         recon_loss = self.loss_fn(
-            logits.view(-1, self.vocab_size),
-            x.view(-1)
+            logits.reshape(-1, self.vocab_size),
+            x_target.reshape(-1)
         )
-
+    
         kl = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-
         beta = self.compute_beta()
-
         loss = recon_loss + beta * kl
-
-        self.log("train_loss", loss)
-        self.log("recon_loss", recon_loss)
-        self.log("kl_loss", kl)
-        self.log("beta", beta)
-
+    
+        # WandB logging
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("recon_loss", recon_loss, on_step=True, on_epoch=True)
+        self.log("kl_loss", kl, on_step=True, on_epoch=True)
+        self.log("beta", beta, on_step=True, on_epoch=True)
+    
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x = batch
-
-        logits, mu, logvar = self(x)
-
+        x_input = batch[:, :-1]
+        x_target = batch[:, 1:]
+    
+        logits, mu, logvar = self(x_input)
+    
         recon_loss = self.loss_fn(
-            logits.view(-1, self.vocab_size),
-            x.view(-1)
+            logits.reshape(-1, self.vocab_size),
+            x_target.reshape(-1)
         )
-
+    
         kl = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-
         beta = self.compute_beta()
         loss = recon_loss + beta * kl
-
-        self.log("val_loss", loss)
-        self.log("val_kl", kl)
-
+    
+        # WandB logging
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_kl", kl, on_step=False, on_epoch=True)
+    
         return loss
 
     def configure_optimizers(self):
