@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--h_dim", type=int)
     parser.add_argument("--emb_dim", type=int)
     parser.add_argument("--beta", type=float)
-    parser.add_argument("--kl_anneal_epochs", type=int)  # ✅ NEW
+    parser.add_argument("--kl_anneal_epochs", type=int)
     parser.add_argument("--lr", type=float)
     parser.add_argument("--project", type=str, default="smiles-vae")
     parser.add_argument("--run_name", type=str, default=None)
@@ -29,7 +29,7 @@ def main():
     if args.h_dim: cfg.h_dim = args.h_dim
     if args.emb_dim: cfg.emb_dim = args.emb_dim
     if args.beta: cfg.beta = args.beta
-    if args.kl_anneal_epochs: cfg.kl_anneal_epochs = args.kl_anneal_epochs  # ✅ NEW
+    if args.kl_anneal_epochs: cfg.kl_anneal_epochs = args.kl_anneal_epochs
     if args.lr: cfg.lr = args.lr
 
     # Auto-generate run name
@@ -42,10 +42,8 @@ def main():
     else:
         run_name = args.run_name
 
-    # WandB login
     wandb.login(key=json.load(open('/root/gurusmart/wandb_key.json'))['key'])
 
-    # Logger
     wandb_logger = WandbLogger(
         project=args.project,
         name=run_name,
@@ -53,15 +51,17 @@ def main():
         log_model=True
     )
 
-    # Model
-    model = SMILESVAE(cfg)
-
     # Data
     data = SMILESDataModule(
         smiles_file="moses_smiles.txt",
         batch_size=cfg.batch_size,
         max_len=cfg.max_len
     )
+    data.setup()
+    vocab_size = data.vocab_size 
+
+    # Model
+    model = SMILESVAE(vocab_size=vocab_size, config=vars(cfg))
 
     # Callbacks
     early_stop = EarlyStopping(monitor="val_loss", patience=20, mode="min")
@@ -81,7 +81,7 @@ def main():
         devices=1,
         precision="16-mixed",
         benchmark=True,
-        gradient_clip_val=1.0,
+        gradient_clip_val=1.0, 
         log_every_n_steps=50,
         logger=wandb_logger,
         callbacks=[early_stop, lr_monitor, checkpoint],
