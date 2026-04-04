@@ -24,6 +24,7 @@ class SMILESDataModule(pl.LightningDataModule):
 
         # Build vocabulary
         self.stoi, self.itos = build_vocab(smiles)
+        self.vocab_size = len(self.stoi)
 
         # Create dataset
         dataset = SmilesDataset(
