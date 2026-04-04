@@ -8,25 +8,15 @@ class Config:
     # =========================
 
     batch_size: int = 64
-    # Number of samples processed before each optimizer step.
-    # Larger = faster training but more VRAM usage.
-
     epochs: int = 200
-    # Full passes over the dataset.
-    # Increase this to improve convergence.
-
     lr: float = 3e-4
-    # Learning rate for the optimizer.
-    # Controls how large parameter updates are each step.
-
     max_len: int = 100
-    # Maximum token length for SMILES sequences.
-    # Longer molecules get truncated/padded to this size.
 
-    beta: float = 5.0
-    # Weight of KL-divergence term in VAE loss.
-    # Higher -> stronger latent compression
-    # Lower -> better reconstruction
+    beta: float = 1.0
+    # MAX beta for KL annealing (NOT constant anymore)
+
+    kl_anneal_epochs: int = 50
+    # Number of epochs to ramp beta from 0 → beta
 
 
     # =========================
@@ -34,17 +24,10 @@ class Config:
     # =========================
 
     emb_dim: int = 128
-    # Token embedding dimension.
-    # Larger captures richer chemical syntax features.
 
-    h_dim: int = 256
-    # Hidden dimension of encoder/decoder layers.
-    # Controls model capacity.
+    h_dim: int = 128
 
-    z_dim: int = 16
-    # Latent space dimensionality.
-    # Smaller = more compression (your main goal)
-    # Larger = more expressive latent representation
+    z_dim: int = 64
 
 
     # =========================
@@ -52,11 +35,4 @@ class Config:
     # =========================
 
     device: str = "cuda"
-    # Compute device:
-    #   "cuda" -> GPU
-    #   "cpu"  -> fallback if GPU unavailable
-
     project: str = "smiles-compression"
-    # Weights & Biases project name.
-    # Used for experiment tracking/logging
-
