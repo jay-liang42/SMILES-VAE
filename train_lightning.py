@@ -42,8 +42,10 @@ def main():
     else:
         run_name = args.run_name
 
+    # WandB login (keep your working code)
     wandb.login(key=json.load(open('/root/gurusmart/wandb_key.json'))['key'])
 
+    # Logger
     wandb_logger = WandbLogger(
         project=args.project,
         name=run_name,
@@ -58,7 +60,7 @@ def main():
         max_len=cfg.max_len
     )
     data.setup()
-    vocab_size = data.vocab_size 
+    vocab_size = data.vocab_size  # Make sure DataModule defines this
 
     # Model
     model = SMILESVAE(vocab_size=vocab_size, config=vars(cfg))
@@ -81,7 +83,7 @@ def main():
         devices=1,
         precision="16-mixed",
         benchmark=True,
-        gradient_clip_val=1.0, 
+        gradient_clip_val=1.0,  # Trainer handles clipping
         log_every_n_steps=50,
         logger=wandb_logger,
         callbacks=[early_stop, lr_monitor, checkpoint],
