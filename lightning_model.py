@@ -1,151 +1,114 @@
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 import pytorch_lightning as pl
-import random
 import logging
 
-from model import SmilesVAE
-from metrics import is_valid_smiles_strict, smiles_similarity
-from data_utils import PAD_TOKEN
-
-
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 class SMILESVAE(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, vocab_size, config):
         super().__init__()
-        self.cfg = cfg
+
         self.save_hyperparameters()
 
-        self.model = None
-        self.reference_pool = None
-        self.stoi = None
-        self.itos = None
+        self.vocab_size = vocab_size
+        self.h_dim = config["h_dim"]
+        self.z_dim = config["z_dim"]
+        self.lr = config["lr"]
 
-    def setup(self, stage=None):
-        dm = self.trainer.datamodule
+        # KL annealing params
+        self.beta_max = config.get("beta", 1.0)
+        self.kl_anneal_epochs = config.get("kl_anneal_epochs", 50)
 
-        self.stoi = dm.stoi
-        self.itos = dm.itos
+        self.embedding = nn.Embedding(vocab_size, self.h_dim)
 
-        with open(dm.smiles_file) as f:
-            smiles = [line.strip() for line in f if line.strip()]
-            self.reference_pool = random.sample(smiles, 1000)
+        self.encoder = nn.GRU(self.h_dim, self.h_dim, batch_first=True)
 
-        self.model = SmilesVAE(
-            vocab_size=len(self.stoi),
-            emb_dim=self.cfg.emb_dim,
-            h_dim=self.cfg.h_dim,
-            z_dim=self.cfg.z_dim,
-            pad_idx=self.stoi[PAD_TOKEN]
-        )
+        self.fc_mu = nn.Linear(self.h_dim, self.z_dim)
+        self.fc_logvar = nn.Linear(self.h_dim, self.z_dim)
+
+        self.decoder = nn.GRU(self.h_dim + self.z_dim, self.h_dim, batch_first=True)
+        self.output = nn.Linear(self.h_dim, vocab_size)
+
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+
+    def encode(self, x):
+        x = self.embedding(x)
+        _, h = self.encoder(x)
+        h = h.squeeze(0)
+
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        return mu, logvar
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def decode(self, x, z):
+        x = self.embedding(x)
+        z = z.unsqueeze(1).repeat(1, x.size(1), 1)
+        x = torch.cat([x, z], dim=-1)
+
+        out, _ = self.decoder(x)
+        return self.output(out)
 
     def forward(self, x):
-        return self.model(x)
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        logits = self.decode(x, z)
+        return logits, mu, logvar
+
+    def compute_beta(self):
+        # Linear annealing
+        if self.current_epoch >= self.kl_anneal_epochs:
+            return self.beta_max
+        return self.beta_max * (self.current_epoch / self.kl_anneal_epochs)
 
     def training_step(self, batch, batch_idx):
         x = batch
 
-        decoder_input = x[:, :-1]
-        target = x[:, 1:]
+        logits, mu, logvar = self(x)
 
-        logits, mu, logvar = self.model(decoder_input)
-
-        recon_loss = F.cross_entropy(
-            logits.reshape(-1, logits.size(-1)),
-            target.reshape(-1),
-            ignore_index=self.stoi[PAD_TOKEN],
-            reduction="sum"
+        recon_loss = self.loss_fn(
+            logits.view(-1, self.vocab_size),
+            x.view(-1)
         )
 
-        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        loss = recon_loss + self.cfg.beta * kl
+        kl = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
-        self.log("train_loss", loss, on_epoch=True, prog_bar=True)
-        self.log("recon_loss", recon_loss, on_epoch=True)
-        self.log("kl_loss", kl, on_epoch=True)
+        beta = self.compute_beta()
+
+        loss = recon_loss + beta * kl
+
+        self.log("train_loss", loss)
+        self.log("recon_loss", recon_loss)
+        self.log("kl_loss", kl)
+        self.log("beta", beta)
 
         return loss
-
-    def on_train_epoch_end(self):
-        loss = self.trainer.callback_metrics.get("train_loss_epoch")
-
-        if loss is not None:
-            logger.info(f"Epoch {self.current_epoch} Loss: {loss:.4f}")
-
-        valid_count = 0
-        similarities = []
-
-        for _ in range(50):
-            z = torch.randn(1, self.cfg.z_dim).to(self.device)
-            gen = self.model.generate(z, self.stoi, self.itos)
-
-            if is_valid_smiles_strict(gen):
-                valid_count += 1
-                ref = random.choice(self.reference_pool)
-                similarities.append(smiles_similarity(gen, ref))
-            else:
-                similarities.append(0.0)
-
-        train_validity = valid_count / 50
-        train_similarity = sum(similarities) / len(similarities)
-
-        logger.info(
-            f"Train Validity: {train_validity:.3f} | Train Similarity: {train_similarity:.3f}"
-        )
-
-        self.model.train()
 
     def validation_step(self, batch, batch_idx):
         x = batch
 
-        decoder_input = x[:, :-1]
-        target = x[:, 1:]
+        logits, mu, logvar = self(x)
 
-        logits, mu, logvar = self.model(decoder_input)
-
-        recon_loss = F.cross_entropy(
-            logits.reshape(-1, logits.size(-1)),
-            target.reshape(-1),
-            ignore_index=self.stoi[PAD_TOKEN],
-            reduction="sum"
+        recon_loss = self.loss_fn(
+            logits.view(-1, self.vocab_size),
+            x.view(-1)
         )
 
-        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        loss = recon_loss + self.cfg.beta * kl
+        kl = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
-        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        beta = self.compute_beta()
+        loss = recon_loss + beta * kl
+
+        self.log("val_loss", loss)
+        self.log("val_kl", kl)
 
         return loss
 
-    def on_validation_epoch_end(self):
-        valid_count = 0
-        similarities = []
-
-        for _ in range(50):
-            z = torch.randn(1, self.cfg.z_dim).to(self.device)
-            gen = self.model.generate(z, self.stoi, self.itos)
-
-            if is_valid_smiles_strict(gen):
-                valid_count += 1
-                ref = random.choice(self.reference_pool)
-                similarities.append(smiles_similarity(gen, ref))
-            else:
-                similarities.append(0.0)
-
-        validity = valid_count / 50
-        similarity = sum(similarities) / len(similarities)
-
-        self.log("validity_rate", validity, prog_bar=True)
-        self.log("similarity", similarity, prog_bar=True)
-
-        logger.info(
-            f"Validity: {validity:.3f} | Similarity: {similarity:.3f}"
-        )
-
-        self.model.train()
-
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.cfg.lr)
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
