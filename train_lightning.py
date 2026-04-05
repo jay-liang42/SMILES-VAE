@@ -4,10 +4,30 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Learning
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import json
+import logging
 
 from lightning_model import SMILESVAE
 from data_module import SMILESDataModule
 from config import Config
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+class LoggingEarlyStopping(EarlyStopping):
+    def on_validation_end(self, trainer, pl_module):
+        super().on_validation_end(trainer, pl_module)
+
+        if trainer.should_stop:
+            current = trainer.callback_metrics.get(self.monitor)
+            best = self.best_score
+            wait = self.wait_count
+
+            logger.info(
+                f"Early stopping triggered at epoch {trainer.current_epoch} | "
+                f"{self.monitor} = {current:.4f} | "
+                f"best = {best:.4f} | "
+                f"no improvement for {wait} epochs"
+            )
 
 
 def main():
@@ -42,7 +62,7 @@ def main():
     else:
         run_name = args.run_name
 
-    # WandB login (keep your working code)
+    # WandB login
     wandb.login(key=json.load(open('/root/gurusmart/wandb_key.json'))['key'])
 
     # Logger
@@ -60,14 +80,20 @@ def main():
         max_len=cfg.max_len
     )
     data.setup()
-    vocab_size = data.vocab_size  # Make sure DataModule defines this
+    vocab_size = data.vocab_size
 
     # Model
     model = SMILESVAE(vocab_size=vocab_size, config=vars(cfg))
 
     # Callbacks
-    early_stop = EarlyStopping(monitor="val_loss", patience=20, mode="min")
+    early_stop = LoggingEarlyStopping(
+        monitor="val_loss",
+        patience=20,
+        mode="min"
+    )
+
     lr_monitor = LearningRateMonitor(logging_interval="step")
+
     checkpoint = ModelCheckpoint(
         monitor="val_loss",
         mode="min",
@@ -83,7 +109,7 @@ def main():
         devices=1,
         precision="16-mixed",
         benchmark=True,
-        gradient_clip_val=1.0,  # Trainer handles clipping
+        gradient_clip_val=1.0,
         log_every_n_steps=50,
         logger=wandb_logger,
         callbacks=[early_stop, lr_monitor, checkpoint],
