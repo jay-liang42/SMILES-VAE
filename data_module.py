@@ -1,16 +1,17 @@
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 import pytorch_lightning as pl
 
 from data_utils import SmilesDataset, build_vocab
 
 
 class SMILESDataModule(pl.LightningDataModule):
-    def __init__(self, smiles_file, batch_size, max_len):
+    def __init__(self, smiles_file, batch_size, max_len, sample_size=200):
         super().__init__()
         self.smiles_file = smiles_file
         self.batch_size = batch_size
         self.max_len = max_len
+        self.sample_size = sample_size 
 
         self.stoi = None
         self.itos = None
@@ -22,7 +23,10 @@ class SMILESDataModule(pl.LightningDataModule):
         with open(self.smiles_file) as f:
             smiles = [line.strip() for line in f if line.strip()]
 
-        # Build vocabulary
+        # LIMIT TO SMALL SAMPLE
+        smiles = smiles[:self.sample_size]
+
+        # Build vocabulary ONLY from subset
         self.stoi, self.itos = build_vocab(smiles)
         self.vocab_size = len(self.stoi)
 
@@ -33,7 +37,10 @@ class SMILESDataModule(pl.LightningDataModule):
             self.max_len
         )
 
-        # Train/validation split (90/10)
+        # Also restrict dataset indices to same subset
+        dataset = Subset(dataset, list(range(len(smiles))))
+
+        # Train/validation split
         train_size = int(0.9 * len(dataset))
         val_size = len(dataset) - train_size
 
@@ -47,7 +54,7 @@ class SMILESDataModule(pl.LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=4,
+            num_workers=2,  # lower workers = safer for tiny dataset
             persistent_workers=True
         )
 
@@ -56,6 +63,6 @@ class SMILESDataModule(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=4,
+            num_workers=2,
             persistent_workers=True
         )
