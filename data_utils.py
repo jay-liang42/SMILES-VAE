@@ -22,10 +22,10 @@ def build_vocab(smiles_list):
     return stoi, itos
 
 def encode_smiles(smile, stoi, max_len):
-    tokens = [SOS_TOKEN] + list(smile) + [EOS_TOKEN]
+    tokens = [SOS_TOKEN] + [ch for ch in smile if ch in stoi] + [EOS_TOKEN]
     tokens = tokens[:max_len]
     tokens += [PAD_TOKEN] * (max_len - len(tokens))
-    return torch.tensor([stoi[t] for t in tokens], dtype=torch.long)
+    return torch.tensor([stoi[t] for t in tokens])
 
 class SmilesDataset(Dataset):
     """
