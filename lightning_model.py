@@ -64,10 +64,7 @@ class SMILESVAE(pl.LightningModule):
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-        # -----------------------
-        # KL Annealing
-        # -----------------------
-        beta = min(1.0, self.current_epoch / self.cfg.get("kl_anneal_epochs", 50)) * self.cfg["beta"]
+        beta = self.cfg["beta"]
         loss = recon_loss + beta * kl
 
         # WandB logging
@@ -79,13 +76,11 @@ class SMILESVAE(pl.LightningModule):
         return loss
 
     def on_train_epoch_end(self):
-        # safer than callback_metrics
         loss = self.trainer.callback_metrics.get("train_loss")
 
         if loss is not None:
             logger.info(f"Epoch {self.current_epoch} Loss: {loss:.4f}")
 
-        # -------- Train Sampling Metrics --------
         valid_count = 0
         similarities = []
 
@@ -128,7 +123,8 @@ class SMILESVAE(pl.LightningModule):
         )
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        beta = min(1.0, self.current_epoch / self.cfg.get("kl_anneal_epochs", 50)) * self.cfg["beta"]
+
+        beta = self.cfg["beta"]
         loss = recon_loss + beta * kl
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
@@ -137,7 +133,6 @@ class SMILESVAE(pl.LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
-        # -------- Validation Sampling Metrics --------
         valid_count = 0
         similarities = []
 
