@@ -12,7 +12,7 @@ class Config:
     lr: float = 3e-4
     max_len: int = 100
 
-    beta: float = 1.0
+    beta: float = 0.0
 
     # =========================
     # Model Architecture
