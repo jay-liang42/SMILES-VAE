@@ -13,11 +13,6 @@ class Config:
     max_len: int = 100
 
     beta: float = 1.0
-    # MAX beta for KL annealing (NOT constant anymore)
-
-    kl_anneal_epochs: int = 50
-    # Number of epochs to ramp beta from 0 → beta
-
 
     # =========================
     # Model Architecture
