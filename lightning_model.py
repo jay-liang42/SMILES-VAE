@@ -59,7 +59,7 @@ class SMILESVAE(pl.LightningModule):
             logits.reshape(-1, logits.size(-1)),
             x_target.reshape(-1),
             ignore_index=self.stoi[PAD_TOKEN],
-            reduction="sum"
+            reduction="mean"
         )
 
         # KL divergence
@@ -117,7 +117,7 @@ class SMILESVAE(pl.LightningModule):
             logits.reshape(-1, logits.size(-1)),
             x_target.reshape(-1),
             ignore_index=self.stoi[PAD_TOKEN],
-            reduction="sum"
+            reduction="mean"
         )
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
