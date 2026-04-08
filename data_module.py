@@ -22,28 +22,25 @@ class SMILESDataModule(pl.LightningDataModule):
         # Load SMILES strings
         with open(self.smiles_file) as f:
             smiles = [line.strip() for line in f if line.strip()]
-
+    
         # LIMIT TO SMALL SAMPLE
         smiles = smiles[:self.sample_size]
-
+    
         # Build vocabulary ONLY from subset
         self.stoi, self.itos = build_vocab(smiles)
         self.vocab_size = len(self.stoi)
-
-        # Create dataset
+    
+        # Create dataset using sliced list
         dataset = SmilesDataset(
-            self.smiles_file,
-            self.stoi,
-            self.max_len
+            smiles_list=smiles,
+            stoi=self.stoi,
+            max_len=self.max_len
         )
-
-        # Also restrict dataset indices to same subset
-        dataset = Subset(dataset, list(range(len(smiles))))
-
+    
         # Train/validation split
         train_size = int(0.9 * len(dataset))
         val_size = len(dataset) - train_size
-
+    
         self.train_dataset, self.val_dataset = random_split(
             dataset,
             [train_size, val_size]
