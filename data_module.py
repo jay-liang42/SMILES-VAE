@@ -6,12 +6,12 @@ from data_utils import SmilesDataset, build_vocab
 
 
 class SMILESDataModule(pl.LightningDataModule):
-    def __init__(self, smiles_file, batch_size, max_len, sample_size=200):
+    def __init__(self, smiles_file, batch_size, max_len):
         super().__init__()
         self.smiles_file = smiles_file
         self.batch_size = batch_size
         self.max_len = max_len
-        self.sample_size = sample_size 
+        # self.sample_size = sample_size 
 
         self.stoi = None
         self.itos = None
@@ -24,7 +24,7 @@ class SMILESDataModule(pl.LightningDataModule):
             smiles = [line.strip() for line in f if line.strip()]
     
         # LIMIT TO SMALL SAMPLE
-        smiles = smiles[:self.sample_size]
+        # smiles = smiles[:self.sample_size]
     
         # Build vocabulary ONLY from subset
         self.stoi, self.itos = build_vocab(smiles)
