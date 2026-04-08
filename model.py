@@ -91,7 +91,7 @@ class SmilesVAE(nn.Module):
         x_input = x[:, :-1]    # input to decoder
         x_target = x[:, 1:]    # expected output
 
-        logits = self.decode(z, x_input)
+        logits = self.decode(z, x_input, teacher_forcing_ratio=0.9)
 
         return logits, mu, logvar, x_target
 
