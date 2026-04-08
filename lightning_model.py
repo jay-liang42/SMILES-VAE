@@ -41,8 +41,19 @@ class SMILESVAE(pl.LightningModule):
             pad_idx=self.stoi[PAD_TOKEN]
         )
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, x, target=None):
+        """Forward pass with optional teacher forcing."""
+        mu, logvar = self.model.encode(x)
+        z = self.model.reparameterize(mu, logvar)
+
+        if target is not None:
+            logits = self.model.decode(z, target)  # teacher forcing
+            x_target = target
+        else:
+            logits = self.model.decode(z, x)
+            x_target = x[:, 1:]  # shifted input
+
+        return logits, mu, logvar, x_target
 
     # -----------------------
     # TRAINING
@@ -53,21 +64,23 @@ class SMILESVAE(pl.LightningModule):
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
-        logits, mu, logvar = self.model(decoder_input)
+        logits, mu, logvar, x_target = self.forward(decoder_input, target=target)
 
+        # Reconstruction loss
         recon_loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
-            target.reshape(-1),
+            x_target.reshape(-1),
             ignore_index=self.stoi[PAD_TOKEN],
             reduction="sum"
         )
 
+        # KL divergence
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         beta = self.cfg["beta"]
         loss = recon_loss + beta * kl
 
-        # WandB logging
+        # Logging
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
         self.log("recon_loss", recon_loss, on_epoch=True)
         self.log("kl_loss", kl, on_epoch=True)
@@ -113,11 +126,11 @@ class SMILESVAE(pl.LightningModule):
         decoder_input = x[:, :-1]
         target = x[:, 1:]
 
-        logits, mu, logvar = self.model(decoder_input)
+        logits, mu, logvar, x_target = self.forward(decoder_input, target=target)
 
         recon_loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
-            target.reshape(-1),
+            x_target.reshape(-1),
             ignore_index=self.stoi[PAD_TOKEN],
             reduction="sum"
         )
