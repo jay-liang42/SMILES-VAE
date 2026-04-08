@@ -15,6 +15,9 @@ if not os.path.exists("moses_smiles.txt"):
             f.write(s + "\n")
 
 def build_vocab(smiles_list):
+    """
+    Build character-level vocab from SMILES, adding PAD, SOS, EOS.
+    """
     chars = set("".join(smiles_list))
     vocab = [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN] + sorted(chars)
     stoi = {ch: i for i, ch in enumerate(vocab)}
@@ -22,14 +25,19 @@ def build_vocab(smiles_list):
     return stoi, itos
 
 def encode_smiles(smile, stoi, max_len):
-    tokens = [SOS_TOKEN] + [ch for ch in smile if ch in stoi] + [EOS_TOKEN]
-    tokens = tokens[:max_len]
-    tokens += [PAD_TOKEN] * (max_len - len(tokens))
+    """
+    Encode SMILES into fixed-length tensor of token IDs.
+    Unknown characters are ignored to prevent KeyErrors.
+    """
+    tokens = [SOS_TOKEN] + [ch for ch in smile if ch in stoi] + [EOS_TOKEN]  # ignore unknowns
+    tokens = tokens[:max_len]  # truncate if too long
+    tokens += [PAD_TOKEN] * (max_len - len(tokens))  # pad if too short
     return torch.tensor([stoi[t] for t in tokens])
 
 class SmilesDataset(Dataset):
     """
-    Dataset from a file or a small SMILES list for memorization tests.
+    PyTorch Dataset for SMILES strings.
+    Can read from a file or take a list of SMILES directly.
     """
     def __init__(self, path=None, smiles_list=None, stoi=None, max_len=100):
         if smiles_list is not None:
@@ -38,7 +46,7 @@ class SmilesDataset(Dataset):
             with open(path) as f:
                 self.smiles = [line.strip() for line in f if line.strip()]
         else:
-            raise ValueError("Provide path or smiles_list")
+            raise ValueError("Provide either 'path' or 'smiles_list'")
         self.stoi = stoi
         self.max_len = max_len
 
