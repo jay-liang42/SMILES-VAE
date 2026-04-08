@@ -42,29 +42,31 @@ class SmilesVAE(nn.Module):
         return mu + eps * std
 
     def decode(self, z, x, teacher_forcing_ratio=0.95):
-        """
-        Decode latent z with optional scheduled sampling.
-        """
         h = self.fc_z(z).unsqueeze(0)
         batch_size, seq_len = x.size()
     
         outputs = []
     
-        # first input = <sos>
-        input_token = x[:, 0].unsqueeze(1)
+        input_token = x[:, 0].unsqueeze(1)  # <sos>
     
         for t in range(seq_len):
             emb = self.embedding(input_token)
             out, h = self.decoder_rnn(emb, h)
-            logits = self.fc_out(out)  # (batch, 1, vocab)
+            logits = self.fc_out(out)
     
             outputs.append(logits)
     
-            pred_token = logits.argmax(dim=-1)  # (batch, 1)
+            pred_token = logits.argmax(dim=-1)
     
-            if self.training:
-                use_teacher = torch.rand(1).item() < teacher_forcing_ratio
-                next_input = x[:, t].unsqueeze(1) if use_teacher else pred_token
+            if self.training and t + 1 < seq_len:
+                use_teacher = torch.rand(batch_size, device=x.device) < teacher_forcing_ratio
+                use_teacher = use_teacher.unsqueeze(1)
+    
+                next_input = torch.where(
+                    use_teacher,
+                    x[:, t + 1].unsqueeze(1),
+                    pred_token
+                )
             else:
                 next_input = pred_token
     
