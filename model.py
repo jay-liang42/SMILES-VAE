@@ -88,7 +88,7 @@ class SmilesVAE(nn.Module):
                 out, h = self.decoder_rnn(emb, h)
                 logits = self.fc_out(out[:, -1, :])
                 probs = torch.softmax(logits, dim=-1)
-                token = torch.multinomial(probs, 1).squeeze(-1)
+                token = torch.argmax(probs, dim=-1)
 
                 if token.item() == stoi["<eos>"]:
                     break
