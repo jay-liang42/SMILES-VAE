@@ -41,18 +41,9 @@ class SMILESVAE(pl.LightningModule):
             pad_idx=self.stoi[PAD_TOKEN]
         )
 
-    def forward(self, x, target=None):
-        """Forward pass with optional teacher forcing."""
-        mu, logvar = self.model.encode(x)
-        z = self.model.reparameterize(mu, logvar)
-
-        if target is not None:
-            logits = self.model.decode(z, target)  # teacher forcing
-            x_target = target
-        else:
-            logits = self.model.decode(z, x)
-            x_target = x[:, 1:]  # shifted input
-
+    def forward(self, x):
+        """Forward pass using SmilesVAE's internal teacher forcing."""
+        logits, mu, logvar, x_target = self.model(x)
         return logits, mu, logvar, x_target
 
     # -----------------------
@@ -61,10 +52,7 @@ class SMILESVAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x = batch
 
-        decoder_input = x[:, :-1]
-        target = x[:, 1:]
-
-        logits, mu, logvar, x_target = self.forward(decoder_input, target=target)
+        logits, mu, logvar, x_target = self.forward(x)
 
         # Reconstruction loss
         recon_loss = F.cross_entropy(
@@ -123,10 +111,7 @@ class SMILESVAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = batch
 
-        decoder_input = x[:, :-1]
-        target = x[:, 1:]
-
-        logits, mu, logvar, x_target = self.forward(decoder_input, target=target)
+        logits, mu, logvar, x_target = self.forward(x)
 
         recon_loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
