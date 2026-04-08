@@ -11,7 +11,6 @@ class SmilesVAE(nn.Module):
         super().__init__()
         self.pad_idx = pad_idx
 
-
         # --------------------
         # Encoder
         # --------------------
@@ -20,14 +19,12 @@ class SmilesVAE(nn.Module):
         self.fc_mu = nn.Linear(h_dim, z_dim)      # Latent mean
         self.fc_logvar = nn.Linear(h_dim, z_dim)  # Latent log-variance
 
-
         # --------------------
         # Decoder
         # --------------------
         self.fc_z = nn.Linear(z_dim, h_dim)       # Map latent z -> initial hidden
         self.decoder_rnn = nn.GRU(emb_dim, h_dim, batch_first=True)
         self.fc_out = nn.Linear(h_dim, vocab_size)  # Output logits over vocab
-
 
     def encode(self, x):
         """Encode input tensor x into latent mean and log-variance."""
@@ -38,13 +35,11 @@ class SmilesVAE(nn.Module):
         logvar = self.fc_logvar(h)
         return mu, logvar
 
-
     def reparameterize(self, mu, logvar):
         """Reparameterization trick: sample latent vector z from N(mu, sigma^2)."""
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
-
 
     def decode(self, z, x):
         """Decode latent z using teacher forcing with input x."""
@@ -53,20 +48,28 @@ class SmilesVAE(nn.Module):
         out, _ = self.decoder_rnn(emb, h0)
         return self.fc_out(out)
 
-
     def forward(self, x):
         """
         Full forward pass: encode -> reparameterize -> decode.
+
         Returns:
-            logits: token logits
+            logits: token logits aligned with x_target
             mu: latent mean
             logvar: latent logvar
+            x_target: shifted target tokens for loss computation
         """
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        logits = self.decode(z, x)
-        return logits, mu, logvar
 
+        # --------------------
+        # Teacher forcing (SHIFT)
+        # --------------------
+        x_input = x[:, :-1]    # input to decoder
+        x_target = x[:, 1:]    # expected output
+
+        logits = self.decode(z, x_input)
+
+        return logits, mu, logvar, x_target
 
     def generate(self, z, stoi, itos, max_len=100):
         """
@@ -80,18 +83,21 @@ class SmilesVAE(nn.Module):
             output = []
             h = self.fc_z(z).unsqueeze(0)
 
-
             for _ in range(max_len):
                 emb = self.embedding(x)
                 out, h = self.decoder_rnn(emb, h)
                 logits = self.fc_out(out[:, -1, :])
                 probs = torch.softmax(logits, dim=-1)
                 token = torch.multinomial(probs, 1).squeeze(-1)
+
                 if token.item() == stoi["<eos>"]:
                     break
+
                 output.append(token.item())
                 x = token.unsqueeze(0)
 
-
             # Convert token IDs to string, removing special tokens
-            return "".join([itos[i] for i in output if i not in (stoi["<sos>"], stoi["<pad>"])])
+            return "".join([
+                itos[i] for i in output
+                if i not in (stoi["<sos>"], stoi["<pad>"])
+            ])
