@@ -14,22 +14,33 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-class LoggingEarlyStopping(EarlyStopping):
+class EarlyStopping(EarlyStopping):
+    """
+    EarlyStopping that logs its internal state every validation epoch.
+    """
     def on_validation_end(self, trainer, pl_module):
-        prev_wait = self.wait_count
-
         super().on_validation_end(trainer, pl_module)
 
-        # Detect the exact moment patience is exceeded
-        if self.wait_count >= self.patience and prev_wait < self.patience:
-            current = trainer.callback_metrics.get(self.monitor)
-            best = self.best_score
+        current = trainer.callback_metrics.get(self.monitor)
+        best = self.best_score
+        wait = self.wait_count
+        epoch = trainer.current_epoch
 
+        if current is not None:
             logger.info(
-                f"Early stopping triggered at epoch {trainer.current_epoch} | "
+                f"[EarlyStopping] Epoch {epoch} | {self.monitor} = {current:.4f} | "
+                f"best = {best:.4f} | wait = {wait}/{self.patience}"
+            )
+        else:
+            logger.warning(
+                f"[EarlyStopping] Epoch {epoch} | {self.monitor} not found in callback metrics."
+            )
+
+        if trainer.should_stop:
+            logger.info(
+                f"[EarlyStopping] Triggered at epoch {epoch} | "
                 f"{self.monitor} = {current:.4f} | "
-                f"best = {best:.4f} | "
-                f"no improvement for {self.wait_count} epochs"
+                f"no improvement for {wait} epochs"
             )
 
 
@@ -79,7 +90,7 @@ def main():
 
     model = SMILESVAE(vocab_size=vocab_size, config=vars(cfg))
 
-    early_stop = LoggingEarlyStopping(
+    early_stop = EarlyStopping(
         monitor="val_loss",
         patience=20,
         mode="min"
