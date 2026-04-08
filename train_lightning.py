@@ -16,18 +16,20 @@ logging.basicConfig(level=logging.INFO)
 
 class LoggingEarlyStopping(EarlyStopping):
     def on_validation_end(self, trainer, pl_module):
+        prev_wait = self.wait_count
+
         super().on_validation_end(trainer, pl_module)
 
-        if trainer.should_stop:
+        # Detect the exact moment patience is exceeded
+        if self.wait_count >= self.patience and prev_wait < self.patience:
             current = trainer.callback_metrics.get(self.monitor)
             best = self.best_score
-            wait = self.wait_count
 
             logger.info(
                 f"Early stopping triggered at epoch {trainer.current_epoch} | "
                 f"{self.monitor} = {current:.4f} | "
                 f"best = {best:.4f} | "
-                f"no improvement for {wait} epochs"
+                f"no improvement for {self.wait_count} epochs"
             )
 
 
