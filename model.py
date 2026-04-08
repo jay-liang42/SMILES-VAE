@@ -59,7 +59,7 @@ class SmilesVAE(nn.Module):
             x_target: shifted target tokens for loss computation
         """
         mu, logvar = self.encode(x)
-        z = self.reparameterize(mu, logvar)
+        z = mu
 
         # --------------------
         # Teacher forcing (SHIFT)
