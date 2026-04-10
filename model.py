@@ -41,7 +41,7 @@ class SmilesVAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def decode(self, z, x, teacher_forcing_ratio=0.95):
+    def decode(self, z, x, teacher_forcing_ratio=1.0):
         h = self.fc_z(z).unsqueeze(0)
         batch_size, seq_len = x.size()
     
@@ -93,7 +93,7 @@ class SmilesVAE(nn.Module):
         x_input = x[:, :-1]    # input to decoder
         x_target = x[:, 1:]    # expected output
 
-        logits = self.decode(z, x_input, teacher_forcing_ratio=0.95)
+        logits = self.decode(z, x_input, teacher_forcing_ratio=1.0)
 
         return logits, mu, logvar, x_target
 
