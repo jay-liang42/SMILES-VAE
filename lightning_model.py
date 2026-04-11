@@ -63,7 +63,7 @@ class SMILESVAE(pl.LightningModule):
         )
 
         # KL divergence
-        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),dim=1).mean()
 
         beta = self.cfg["beta"]
         loss = recon_loss + beta * kl
@@ -120,7 +120,7 @@ class SMILESVAE(pl.LightningModule):
             reduction="mean"
         )
 
-        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),dim=1).mean()
 
         beta = self.cfg["beta"]
         loss = recon_loss + beta * kl
