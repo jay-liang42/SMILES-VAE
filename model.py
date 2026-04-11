@@ -47,7 +47,7 @@ class SmilesVAE(nn.Module):
     
         outputs = []
     
-        input_token = x[:, 0].unsqueeze(1)  # <sos>
+        input_token = x[:, 0].unsqueeze(1)
     
         for t in range(seq_len):
             emb = self.embedding(input_token)
@@ -58,7 +58,7 @@ class SmilesVAE(nn.Module):
     
             pred_token = logits.argmax(dim=-1)
     
-            if self.training and t + 1 < seq_len:
+            if self.training and t < seq_len - 1:
                 use_teacher = torch.rand(batch_size, device=x.device) < teacher_forcing_ratio
                 use_teacher = use_teacher.unsqueeze(1)
     
