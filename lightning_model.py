@@ -124,7 +124,7 @@ class SMILESVAE(pl.LightningModule):
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),dim=1).mean()
 
-        beta = self.cfg["beta"]
+        beta = min(0.1, self.current_epoch / 10 * 0.1)
         loss = recon_loss + beta * kl
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
