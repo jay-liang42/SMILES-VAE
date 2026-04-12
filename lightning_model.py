@@ -43,7 +43,7 @@ class SMILESVAE(pl.LightningModule):
 
     def forward(self, x):
         """Forward pass using SmilesVAE's internal teacher forcing."""
-        logits, mu, logvar, x_target = self.model(x)
+        logits, mu, logvar, x_target = self.model(x, epoch=self.current_epoch)
         return logits, mu, logvar, x_target
 
     # -----------------------
@@ -65,7 +65,7 @@ class SMILESVAE(pl.LightningModule):
         # KL divergence
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(),dim=1).mean()
 
-        beta = self.cfg["beta"]
+        beta = min(0.1, self.current_epoch / 10 * 0.1)
         loss = recon_loss + beta * kl
 
         # Logging
@@ -77,6 +77,8 @@ class SMILESVAE(pl.LightningModule):
         return loss
 
     def on_train_epoch_end(self):
+        if self.current_epoch % 5 != 0:
+            return
         loss = self.trainer.callback_metrics.get("train_loss")
 
         if loss is not None:
@@ -85,7 +87,7 @@ class SMILESVAE(pl.LightningModule):
         valid_count = 0
         similarities = []
 
-        for _ in range(50):
+        for _ in range(10):
             z = torch.randn(1, self.cfg["z_dim"]).to(self.device)
             gen = self.model.generate(z, self.stoi, self.itos)
 
@@ -96,7 +98,7 @@ class SMILESVAE(pl.LightningModule):
             else:
                 similarities.append(0.0)
 
-        train_validity = valid_count / 50
+        train_validity = valid_count / 10
         train_similarity = sum(similarities) / len(similarities)
 
         logger.info(
@@ -131,10 +133,12 @@ class SMILESVAE(pl.LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
+        if self.current_epoch % 5 != 0:
+            return
         valid_count = 0
         similarities = []
 
-        for _ in range(50):
+        for _ in range(10):
             z = torch.randn(1, self.cfg["z_dim"]).to(self.device)
             gen = self.model.generate(z, self.stoi, self.itos)
 
@@ -145,7 +149,7 @@ class SMILESVAE(pl.LightningModule):
             else:
                 similarities.append(0.0)
 
-        validity = valid_count / 50
+        validity = valid_count / 10
         similarity = sum(similarities) / len(similarities)
 
         self.log("validity_rate", validity, prog_bar=True)
