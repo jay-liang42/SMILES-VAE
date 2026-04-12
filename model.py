@@ -33,6 +33,7 @@ class SmilesVAE(nn.Module):
         h = h.squeeze(0)
         mu = self.fc_mu(h)
         logvar = self.fc_logvar(h)
+        logvar = torch.clamp(logvar, min=-10, max=10)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
@@ -41,7 +42,7 @@ class SmilesVAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def decode(self, z, x, teacher_forcing_ratio=0.3):
+    def decode(self, z, x, teacher_forcing_ratio):
         h = self.fc_z(z).unsqueeze(0)
         batch_size, seq_len = x.size()
     
@@ -74,7 +75,7 @@ class SmilesVAE(nn.Module):
     
         return torch.cat(outputs, dim=1)
 
-    def forward(self, x):
+    def forward(self, x, epoch=0):
         """
         Full forward pass: encode -> reparameterize -> decode.
 
@@ -93,7 +94,8 @@ class SmilesVAE(nn.Module):
         x_input = x[:, :-1]    # input to decoder
         x_target = x[:, 1:]    # expected output
 
-        logits = self.decode(z, x_input, teacher_forcing_ratio=0.3)
+        teacher_forcing_ratio = max(0.5, 1.0 - epoch / 20)
+        logits = self.decode(z, x_input, teacher_forcing_ratio=teacher_forcing_ratio)
 
         return logits, mu, logvar, x_target
 
@@ -114,7 +116,7 @@ class SmilesVAE(nn.Module):
                 out, h = self.decoder_rnn(emb, h)
                 logits = self.fc_out(out[:, -1, :])
                 probs = torch.softmax(logits, dim=-1)
-                token = torch.argmax(probs, dim=-1)
+                token = torch.multinomial(probs, num_samples=1).squeeze(-1)
 
                 if token.item() == stoi["<eos>"]:
                     break
