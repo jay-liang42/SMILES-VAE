@@ -77,34 +77,40 @@ class SMILESVAE(pl.LightningModule):
         return loss
 
     def on_train_epoch_end(self):
-        if self.current_epoch % 5 != 0:
-            return
-        loss = self.trainer.callback_metrics.get("train_loss")
-
-        if loss is not None:
-            logger.info(f"Epoch {self.current_epoch} Loss: {loss:.4f}")
-
+        self.model.eval()
+    
+        samples = []
         valid_count = 0
         similarities = []
-
-        for _ in range(10):
-            z = torch.randn(1, self.cfg["z_dim"]).to(self.device)
-            gen = self.model.generate(z, self.stoi, self.itos)
-
-            if is_valid_smiles_strict(gen):
-                valid_count += 1
-                ref = random.choice(self.reference_pool)
-                similarities.append(smiles_similarity(gen, ref))
-            else:
-                similarities.append(0.0)
-
+    
+        with torch.no_grad():
+            for _ in range(10):
+                z = torch.randn(1, self.cfg["z_dim"], device=self.device)
+                gen = self.model.generate(z, self.stoi, self.itos)
+                samples.append(gen)
+        
+                if is_valid_smiles_strict(gen):
+                    valid_count += 1
+                    ref = random.choice(self.reference_pool)
+                    similarities.append(smiles_similarity(gen, ref))
+                else:
+                    similarities.append(0.0)
+    
+        logger.info(f"\n===== Epoch {self.current_epoch} Samples =====")
+        for s in samples[:5]:
+            logger.info(f"{s} | valid={is_valid_smiles_strict(s)}")
+    
+        loss = self.trainer.callback_metrics.get("train_loss")
+        if loss is not None:
+            logger.info(f"Epoch {self.current_epoch} Loss: {loss:.4f}")
+    
         train_validity = valid_count / 10
         train_similarity = sum(similarities) / len(similarities)
-
+    
         logger.info(
             f"Train Validity: {train_validity:.3f} | Train Similarity: {train_similarity:.3f}"
         )
-
+    
         self.model.train()
 
     # -----------------------
@@ -128,26 +134,26 @@ class SMILESVAE(pl.LightningModule):
         loss = recon_loss + beta * kl
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        self.log("val_recon_loss", recon_loss)
         self.log("beta", beta, on_epoch=True)
 
         return loss
 
     def on_validation_epoch_end(self):
-        if self.current_epoch % 5 != 0:
-            return
         valid_count = 0
         similarities = []
 
-        for _ in range(10):
-            z = torch.randn(1, self.cfg["z_dim"]).to(self.device)
-            gen = self.model.generate(z, self.stoi, self.itos)
-
-            if is_valid_smiles_strict(gen):
-                valid_count += 1
-                ref = random.choice(self.reference_pool)
-                similarities.append(smiles_similarity(gen, ref))
-            else:
-                similarities.append(0.0)
+        with torch.no_grad():
+            for _ in range(10):
+                z = torch.randn(1, self.cfg["z_dim"], device=self.device)
+                gen = self.model.generate(z, self.stoi, self.itos)
+    
+                if is_valid_smiles_strict(gen):
+                    valid_count += 1
+                    ref = random.choice(self.reference_pool)
+                    similarities.append(smiles_similarity(gen, ref))
+                else:
+                    similarities.append(0.0)
 
         validity = valid_count / 10
         similarity = sum(similarities) / len(similarities)
@@ -159,7 +165,5 @@ class SMILESVAE(pl.LightningModule):
             f"Validity: {validity:.3f} | Similarity: {similarity:.3f}"
         )
 
-        self.model.train()
-
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.cfg["lr"])
+        return torch.optim.Adam(self.model.parameters(), lr=self.cfg["lr"])
