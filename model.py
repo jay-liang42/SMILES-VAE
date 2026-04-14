@@ -94,7 +94,7 @@ class SmilesVAE(nn.Module):
         x_input = x[:, :-1]    # input to decoder
         x_target = x[:, 1:]    # expected output
 
-        teacher_forcing_ratio = max(0.2, 1.0 - epoch / 30)
+        teacher_forcing_ratio = max(0.2, 1.0 - epoch / 10)
         logits = self.decode(z, x_input, teacher_forcing_ratio=teacher_forcing_ratio)
 
         return logits, mu, logvar, x_target
@@ -116,7 +116,7 @@ class SmilesVAE(nn.Module):
                 out, h = self.decoder_rnn(emb, h)
                 logits = self.fc_out(out[:, -1, :])
                 probs = torch.softmax(logits, dim=-1)
-                token = torch.multinomial(probs, num_samples=1).squeeze(-1)
+                token = torch.argmax(probs, dim=-1)
 
                 if token.item() == stoi["<eos>"]:
                     break
