@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -28,7 +29,8 @@ class SmilesVAE(nn.Module):
 
     def encode(self, x):
         """Encode input tensor x into latent mean and log-variance."""
-        emb = self.embedding(x)                   # (batch, seq_len, emb_dim)
+        emb = self.embedding(x)
+        emb = F.dropout(emb, 0.3, training=self.training)
         _, h = self.encoder_rnn(emb)              # h: (1, batch, h_dim)
         h = h.squeeze(0)
         mu = self.fc_mu(h)
@@ -52,6 +54,7 @@ class SmilesVAE(nn.Module):
     
         for t in range(seq_len):
             emb = self.embedding(input_token)
+            emb = F.dropout(emb, 0.3, training=self.training)
             out, h = self.decoder_rnn(emb, h)
             logits = self.fc_out(out)
     
