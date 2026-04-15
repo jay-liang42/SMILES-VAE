@@ -64,7 +64,7 @@ class SMILESVAE(pl.LightningModule):
 
         # KL divergence
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
-        free_bits = 0.1
+        free_bits = 0.01
         kl = torch.clamp(kl, min=free_bits)
         kl = kl.mean()
 
@@ -137,7 +137,7 @@ class SMILESVAE(pl.LightningModule):
         )
 
         kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
-        free_bits = 0.1
+        free_bits = 0.01
         kl = torch.clamp(kl, min=free_bits)
         kl = kl.mean()
 
