@@ -35,7 +35,7 @@ class SmilesVAE(nn.Module):
         h = h.squeeze(0)
         mu = self.fc_mu(h)
         logvar = self.fc_logvar(h)
-        logvar = torch.clamp(logvar, min=-10, max=10)
+        logvar = torch.clamp(logvar, min=-4, max=4)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
