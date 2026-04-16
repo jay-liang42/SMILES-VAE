@@ -71,7 +71,7 @@ class SMILESVAE(pl.LightningModule):
         if self.current_epoch < 10:
             beta = 0.0
         else:
-            beta = min(0.05, (self.current_epoch - 10) / 40 * 0.05)
+            beta = min(0.05, (self.current_epoch - 10) / 100 * 0.05)
         loss = recon_loss + beta * kl
 
         # Logging
@@ -144,7 +144,7 @@ class SMILESVAE(pl.LightningModule):
         if self.current_epoch < 10:
             beta = 0.0
         else:
-            beta = min(0.05, (self.current_epoch - 10) / 40 * 0.05)
+            beta = min(0.05, (self.current_epoch - 10) / 100 * 0.05)
         loss = recon_loss + beta * kl
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
