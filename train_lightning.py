@@ -91,9 +91,9 @@ def main():
     model = SMILESVAE(vocab_size=vocab_size, config=vars(cfg))
 
     early_stop = EarlyStopping(
-        monitor="val_loss",
+        monitor="validity_rate",
         patience=20,
-        mode="min"
+        mode="max"
     )
 
     lr_monitor = LearningRateMonitor(logging_interval="step")
